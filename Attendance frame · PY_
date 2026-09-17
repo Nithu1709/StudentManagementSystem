@@ -1,0 +1,138 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import db
+
+
+class StudentFrame(ttk.Frame):
+    def __init__(self, master):
+        super().__init__(master, padding=15)
+        self.selected_id = None
+        self._build_form()
+        self._build_table()
+        self.refresh_table()
+
+    # ------------------------------------------------------------------
+    def _build_form(self):
+        form = ttk.LabelFrame(self, text="Student Details", padding=10)
+        form.grid(row=0, column=0, sticky="new", padx=(0, 10))
+
+        self.fields = {}
+        labels = ["Name", "Date of Birth (YYYY-MM-DD)", "Gender", "Class", "Section", "Contact", "Address"]
+        for i, label in enumerate(labels):
+            ttk.Label(form, text=label + ":").grid(row=i, column=0, sticky="e", pady=4)
+            var = tk.StringVar()
+            ttk.Entry(form, textvariable=var, width=28).grid(row=i, column=1, pady=4)
+            self.fields[label] = var
+
+        btns = ttk.Frame(form)
+        btns.grid(row=len(labels), column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(btns, text="Add", command=self.add_student).grid(row=0, column=0, padx=3)
+        ttk.Button(btns, text="Update", command=self.update_student).grid(row=0, column=1, padx=3)
+        ttk.Button(btns, text="Delete", command=self.delete_student).grid(row=0, column=2, padx=3)
+        ttk.Button(btns, text="Clear", command=self.clear_form).grid(row=0, column=3, padx=3)
+
+        search_frame = ttk.Frame(form)
+        search_frame.grid(row=len(labels) + 1, column=0, columnspan=2, pady=(15, 0))
+        ttk.Label(search_frame, text="Search (ID / Name / Class):").grid(row=0, column=0)
+        self.search_var = tk.StringVar()
+        ttk.Entry(search_frame, textvariable=self.search_var, width=18).grid(row=0, column=1, padx=5)
+        ttk.Button(search_frame, text="Search", command=self.search).grid(row=0, column=2)
+        ttk.Button(search_frame, text="Show All", command=self.refresh_table).grid(row=1, column=0, columnspan=3, pady=(5, 0))
+
+    def _build_table(self):
+        columns = ("id", "name", "dob", "gender", "class", "section", "contact", "address")
+        self.tree = ttk.Treeview(self, columns=columns, show="headings", height=18)
+        headings = ["ID", "Name", "DOB", "Gender", "Class", "Section", "Contact", "Address"]
+        widths = [40, 120, 90, 70, 60, 60, 100, 150]
+        for col, head, w in zip(columns, headings, widths):
+            self.tree.heading(col, text=head)
+            self.tree.column(col, width=w, anchor="center")
+        self.tree.grid(row=0, column=1, sticky="nsew")
+        self.tree.bind("<<TreeviewSelect>>", self.on_row_select)
+
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.grid(row=0, column=2, sticky="ns")
+
+    # ------------------------------------------------------------------
+    def refresh_table(self):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        for s in db.get_all_students():
+            self.tree.insert(
+                "", "end",
+                values=(s["student_id"], s["name"], s["dob"], s["gender"],
+                        s["class"], s["section"], s["contact"], s["address"]),
+            )
+
+    def search(self):
+        term = self.search_var.get().strip()
+        if not term:
+            self.refresh_table()
+            return
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        for s in db.search_students(term):
+            self.tree.insert(
+                "", "end",
+                values=(s["student_id"], s["name"], s["dob"], s["gender"],
+                        s["class"], s["section"], s["contact"], s["address"]),
+            )
+
+    def on_row_select(self, event):
+        selected = self.tree.selection()
+        if not selected:
+            return
+        values = self.tree.item(selected[0], "values")
+        self.selected_id = values[0]
+        keys = ["Name", "Date of Birth (YYYY-MM-DD)", "Gender", "Class", "Section", "Contact", "Address"]
+        for key, val in zip(keys, values[1:]):
+            self.fields[key].set(val)
+
+    def _collect_form(self):
+        return (
+            self.fields["Name"].get().strip(),
+            self.fields["Date of Birth (YYYY-MM-DD)"].get().strip(),
+            self.fields["Gender"].get().strip(),
+            self.fields["Class"].get().strip(),
+            self.fields["Section"].get().strip(),
+            self.fields["Contact"].get().strip(),
+            self.fields["Address"].get().strip(),
+        )
+
+    def add_student(self):
+        name, dob, gender, klass, section, contact, address = self._collect_form()
+        if not name:
+            messagebox.showwarning("Validation", "Name is required.")
+            return
+        db.add_student(name, dob, gender, klass, section, contact, address)
+        messagebox.showinfo("Success", f"Student '{name}' added.")
+        self.clear_form()
+        self.refresh_table()
+
+    def update_student(self):
+        if not self.selected_id:
+            messagebox.showwarning("No selection", "Select a student from the table first.")
+            return
+        name, dob, gender, klass, section, contact, address = self._collect_form()
+        if not name:
+            messagebox.showwarning("Validation", "Name is required.")
+            return
+        db.update_student(self.selected_id, name, dob, gender, klass, section, contact, address)
+        messagebox.showinfo("Success", "Student record updated.")
+        self.clear_form()
+        self.refresh_table()
+
+    def delete_student(self):
+        if not self.selected_id:
+            messagebox.showwarning("No selection", "Select a student from the table first.")
+            return
+        if messagebox.askyesno("Confirm", "Delete this student record?"):
+            db.delete_student(self.selected_id)
+            self.clear_form()
+            self.refresh_table()
+
+    def clear_form(self):
+        self.selected_id = None
+        for var in self.fields.values():
+            var.set("")
