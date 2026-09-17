@@ -1,0 +1,106 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import db
+
+
+class MarksFrame(ttk.Frame):
+    def __init__(self, master):
+        super().__init__(master, padding=15)
+        self._build_form()
+        self._build_table()
+
+    def _build_form(self):
+        form = ttk.LabelFrame(self, text="Add Marks", padding=10)
+        form.grid(row=0, column=0, sticky="new", padx=(0, 10))
+
+        ttk.Label(form, text="Student ID:").grid(row=0, column=0, sticky="e", pady=4)
+        self.student_id_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.student_id_var, width=15).grid(row=0, column=1, pady=4)
+        ttk.Button(form, text="Load", command=self.load_name).grid(row=0, column=2, padx=5)
+        self.name_label = ttk.Label(form, text="", foreground="green")
+        self.name_label.grid(row=1, column=0, columnspan=3)
+
+        ttk.Label(form, text="Subject:").grid(row=2, column=0, sticky="e", pady=4)
+        self.subject_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.subject_var, width=15).grid(row=2, column=1, pady=4)
+
+        ttk.Label(form, text="Marks Obtained:").grid(row=3, column=0, sticky="e", pady=4)
+        self.obtained_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.obtained_var, width=15).grid(row=3, column=1, pady=4)
+
+        ttk.Label(form, text="Max Marks:").grid(row=4, column=0, sticky="e", pady=4)
+        self.max_var = tk.StringVar(value="100")
+        ttk.Entry(form, textvariable=self.max_var, width=15).grid(row=4, column=1, pady=4)
+
+        ttk.Button(form, text="Add Marks", command=self.add_marks).grid(
+            row=5, column=0, columnspan=3, pady=(10, 0)
+        )
+        ttk.Button(form, text="View Marks", command=self.load_marks).grid(
+            row=6, column=0, columnspan=3, pady=(5, 0)
+        )
+
+        self.summary_label = ttk.Label(form, text="", font=("Segoe UI", 10, "bold"), justify="left")
+        self.summary_label.grid(row=7, column=0, columnspan=3, pady=(15, 0))
+
+    def _build_table(self):
+        columns = ("subject", "obtained", "max")
+        self.tree = ttk.Treeview(self, columns=columns, show="headings", height=18)
+        self.tree.heading("subject", text="Subject")
+        self.tree.heading("obtained", text="Marks Obtained")
+        self.tree.heading("max", text="Max Marks")
+        for col in columns:
+            self.tree.column(col, width=120, anchor="center")
+        self.tree.grid(row=0, column=1, sticky="nsew")
+
+    def load_name(self):
+        sid = self.student_id_var.get().strip()
+        if not sid.isdigit():
+            self.name_label.config(text="Enter a valid numeric ID", foreground="red")
+            return
+        student = db.get_student(int(sid))
+        if student:
+            self.name_label.config(text=f"Student: {student['name']}", foreground="green")
+            self.load_marks()
+        else:
+            self.name_label.config(text="No student found with that ID", foreground="red")
+
+    def add_marks(self):
+        sid = self.student_id_var.get().strip()
+        subject = self.subject_var.get().strip()
+        try:
+            obtained = float(self.obtained_var.get())
+            max_marks = float(self.max_var.get())
+        except ValueError:
+            messagebox.showwarning("Validation", "Marks must be numeric.")
+            return
+
+        if not sid.isdigit() or not subject:
+            messagebox.showwarning("Validation", "Enter Student ID and Subject.")
+            return
+        if not db.get_student(int(sid)):
+            messagebox.showerror("Not found", "No student found with that ID.")
+            return
+        if obtained < 0 or max_marks <= 0 or obtained > max_marks:
+            messagebox.showwarning("Validation", "Marks obtained must be between 0 and Max Marks.")
+            return
+
+        db.add_marks(int(sid), subject, obtained, max_marks)
+        messagebox.showinfo("Success", "Marks added.")
+        self.subject_var.set("")
+        self.obtained_var.set("")
+        self.load_marks()
+
+    def load_marks(self):
+        sid = self.student_id_var.get().strip()
+        if not sid.isdigit():
+            messagebox.showwarning("Validation", "Enter a valid numeric Student ID.")
+            return
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        for r in db.get_marks_for_student(int(sid)):
+            self.tree.insert("", "end", values=(r["subject"], r["marks_obtained"], r["max_marks"]))
+
+        total_obtained, total_max, pct, grade = db.marks_summary(int(sid))
+        self.summary_label.config(
+            text=f"Total: {total_obtained}/{total_max}\nPercentage: {pct}%\nGrade: {grade}"
+        )
